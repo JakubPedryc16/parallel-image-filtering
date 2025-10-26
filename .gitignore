@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.pyc
+*.pdb
+
+# Wirtualne środowiska
+venv/
+env/
+.venv/
+.env/
+
+# IDE / edytory
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# System
+.DS_Store
+Thumbs.db
+
+# Dane i wyniki (możesz śledzić sample lub małe obrazy)
+data/output/
+results/
+*.log
+
+# CUDA / Numba cache
+__pycache__/
+*.cubin
+*.ptx
+*.nvvp
+
+# MPI / tymczasowe pliki
+*.mpi
+*.out
+*.err
