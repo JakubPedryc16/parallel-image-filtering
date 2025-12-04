@@ -1,89 +1,121 @@
 import os
-import cv2
-import time
 import numpy as np
-from src.filters.sharpen_cpu import sharpen, sharpen_seq
-from src.filters.gauss_cpu import gaussian_blur, gaussian_blur_seq, make_gaussian_kernel
-from src.filters.edges_cpu import sobel_edges, sobel_edges_seq, make_sobel_kernels
-from src.metrics import evaluate
+import argparse 
+import sys
 
-input_dir = "data/input"
-output_dirs = {
+from src.runner import run_sequential_benchmark
+from src.constants import MODE_SINGLE, MODE_MPI, VALID_VARIANTS, VARIANT_SEQ, VARIANT_PAR, VARIANT_CUDA
+
+try:
+    from mpi4py import MPI
+    from src.mpi_runner import run_mpi_benchmark
+    MPI_AVAILABLE = True
+except ImportError:
+    MPI_AVAILABLE = False
+
+
+from src.filters.sharpen import make_sharpen_kernel, sharpen, sharpen_seq, sharpen_cuda
+from src.filters.gauss import gaussian_blur, gaussian_blur_seq, make_gaussian_kernel, gaussian_blur_cuda
+from src.filters.edges import sobel_edges, sobel_edges_seq, make_sobel_kernels, sobel_edges_cuda
+
+
+INPUT_DIR = "data/input"
+OUTPUT_DIRS = {
     "blur": "data/output_blur",
     "edges": "data/output_edges",
     "sharpen": "data/output_sharpen"
 }
 
-for dir_path in output_dirs.values():
-    os.makedirs(dir_path, exist_ok=True)
+USE_NUMBA_PARALLEL = True 
 
-filters = [
-    {"name": "blur", "seq": gaussian_blur_seq, "par": gaussian_blur, "make_kernel": lambda: make_gaussian_kernel(5)},
-    {"name": "edges", "seq": sobel_edges_seq, "par": sobel_edges, "make_kernel": make_sobel_kernels},
-    {"name": "sharpen", "seq": sharpen_seq, "par": sharpen, "make_kernel": lambda: np.array([[0,-1,0],[-1,5,-1],[0,-1,0]], dtype=np.float32)}
-]
+DEFAULT_VARIANTS = f"{VARIANT_SEQ},{VARIANT_PAR},{VARIANT_CUDA}" 
 
-dummy_img = np.zeros((10, 10), dtype=np.float32)
-for f in filters:
-    kernel = f["make_kernel"]()
-    if f["name"] == "edges":
-        kx, ky = kernel
-        f["seq"](dummy_img, kx, ky)
-        f["par"](dummy_img, kx, ky)
-    else:
-        f["seq"](dummy_img, kernel)
-        f["par"](dummy_img, kernel)
+def setup_filters(numba_flag):
+    
+    par_gauss = gaussian_blur if numba_flag else gaussian_blur_seq
+    par_sharpen = sharpen if numba_flag else sharpen_seq
+    par_sobel = sobel_edges if numba_flag else sobel_edges_seq
+    
+    return [
+        {
+            "name": "blur", 
+            VARIANT_SEQ: gaussian_blur_seq, 
+            VARIANT_PAR: par_gauss, 
+            VARIANT_CUDA: gaussian_blur_cuda, 
+            "make_kernel": lambda: make_gaussian_kernel()
+        },
+        {
+            "name": "edges", 
+            VARIANT_SEQ: sobel_edges_seq, 
+            VARIANT_PAR: par_sobel, 
+            VARIANT_CUDA: sobel_edges_cuda, 
+            "make_kernel": lambda: make_sobel_kernels()
+        },
+        {
+            "name": "sharpen", 
+            VARIANT_SEQ: sharpen_seq, 
+            VARIANT_PAR: par_sharpen, 
+            VARIANT_CUDA: sharpen_cuda, 
+            "make_kernel": lambda: make_sharpen_kernel()
+        }
+    ]
 
-for f in filters:
-    total_time_seq = 0
-    total_time_par = 0
-    total_psnr_seq = 0
-    total_psnr_par = 0
-    total_ssim_seq = 0
-    total_ssim_par = 0
-    count = 0
+FILTERS = setup_filters(USE_NUMBA_PARALLEL)
 
-    for file in sorted(os.listdir(input_dir)):
-        if not file.endswith((".jpg", ".png")):
-            continue
 
-        img_path = os.path.join(input_dir, file)
-        img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE).astype(np.float32) / 255.0
-        kernel = f["make_kernel"]()
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Uruchomienie benchmarków filtrów obrazu.")
+    
+    parser.add_argument("--mode", type=str, choices=[MODE_SINGLE, MODE_MPI], default=MODE_SINGLE,
+                        help=f"Tryb uruchomienia: '{MODE_SINGLE}' (standardowy) lub '{MODE_MPI}' (rozproszony).")
+    
+    parser.add_argument("--variants", type=str, default=DEFAULT_VARIANTS,
+                        help=f"Warianty do uruchomienia ({', '.join(VALID_VARIANTS)}). Domyślnie: {DEFAULT_VARIANTS}.")
+    
+    args = parser.parse_args()
 
-        if f["name"] == "edges":
-            kx, ky = kernel
+    mode = args.mode
+    variants_to_run = [v.strip() for v in args.variants.split(',') if v.strip() and v.strip() in VALID_VARIANTS]
 
-            start_seq = time.time()
-            result_seq = f["seq"](img, kx, ky)
-            time_seq = time.time() - start_seq
+    if not variants_to_run:
+        print(f"BŁĄD: Nie wybrano poprawnych wariantów do uruchomienia. Oczekiwano: {', '.join(VALID_VARIANTS)}.")
+        sys.exit(1)
 
-            start_par = time.time()
-            result_par = f["par"](img, kx, ky)
-            time_par = time.time() - start_par
-        else:
-            start_seq = time.time()
-            result_seq = f["seq"](img, kernel)
-            time_seq = time.time() - start_seq
+    if mode == MODE_SINGLE:
+        
+        print("--- Uruchamiam standardowy benchmark (Tryb Pojedynczego Procesu) ---")
 
-            start_par = time.time()
-            result_par = f["par"](img, kernel)
-            time_par = time.time() - start_par
+        run_sequential_benchmark(INPUT_DIR, OUTPUT_DIRS, FILTERS, variants_to_run)
 
-        psnr_seq, ssim_seq = evaluate(img, result_seq)
-        psnr_par, ssim_par = evaluate(img, result_par)
+    elif mode == MODE_MPI:
+        if not MPI_AVAILABLE:
+            print("BŁĄD: Wybrano tryb MPI, ale 'mpi4py' nie jest dostępna.")
+            sys.exit(1)
+            
+        valid_mpi_variants = [VARIANT_SEQ, VARIANT_PAR]
+        variants_to_test = [v for v in variants_to_run if v in valid_mpi_variants]
+        
+        if not variants_to_test:
+            print(f"BŁĄD: Nie wybrano poprawnych wariantów do uruchomienia w trybie MPI. Oczekiwano: {', '.join(valid_mpi_variants)}.")
+            sys.exit(1)
 
-        total_time_seq += time_seq
-        total_time_par += time_par
-        total_psnr_seq += psnr_seq
-        total_psnr_par += psnr_par
-        total_ssim_seq += ssim_seq
-        total_ssim_par += ssim_par
-        count += 1
+        comm = MPI.COMM_WORLD
+        size = comm.Get_size()
+        rank = comm.Get_rank()
+        
+        if size <= 1:
+            if rank == 0:
+                 print(f"BŁĄD: Wybrano tryb MPI, ale uruchomiono go jako pojedynczy proces. Użyj komendy: 'mpiexec -n X python main.py --mode {MODE_MPI} --variants <wariant>' (gdzie X > 1)")
+            sys.exit(1)
 
-        cv2.imwrite(os.path.join(output_dirs[f["name"]], f"{f['name']}_seq_{file}"), (result_seq * 255).astype(np.uint8))
-        cv2.imwrite(os.path.join(output_dirs[f["name"]], f"{f['name']}_par_{file}"), (result_par * 255).astype(np.uint8))
+        print(f"--- Uruchamiam benchmark MPI (Tryb Rozproszony) na {size} procesach ---")
+        
+        for mpi_variant in variants_to_test:
+            if rank == 0:
+                print(f"\n--- URUCHAMIANIE WARIANTU MPI: {mpi_variant.upper()} ---")
 
-    print(f"{f['name'].capitalize()} - średnio dla {count} plików:")
-    print(f"  Sekwencyjnie → czas: {total_time_seq/count:.4f}s, PSNR: {total_psnr_seq/count:.2f} dB, SSIM: {total_ssim_seq/count:.4f}")
-    print(f"  Równolegle  → czas: {total_time_par/count:.4f}s, PSNR: {total_psnr_par/count:.2f} dB, SSIM: {total_ssim_par/count:.4f}")
+            comm.Barrier() 
+            
+            run_mpi_benchmark(INPUT_DIR, OUTPUT_DIRS, FILTERS, mpi_variant)
+            
+        comm.Barrier()

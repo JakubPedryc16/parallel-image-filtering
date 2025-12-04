@@ -11,6 +11,8 @@ venv/
 env/
 .venv/
 .env/
+venv_cuda_fix/
+.venv_cuda_fix/
 
 # IDE / edytory
 .idea/
