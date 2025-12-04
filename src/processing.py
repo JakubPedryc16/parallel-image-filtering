@@ -55,6 +55,12 @@ def run_dummy_compilation(filters_config, variants_to_run):
                 f[VARIANT_CUDA](*cuda_args)
 
 
+import os
+import cv2
+import time
+import numpy as np
+from src.metrics import evaluate
+
 def process_single_file(file_name, filter_info, input_dir, output_dirs, filter_func, method_name):
     filter_name = filter_info["name"]
     make_kernel = filter_info["make_kernel"]
@@ -74,6 +80,7 @@ def process_single_file(file_name, filter_info, input_dir, output_dirs, filter_f
     
     start_wall = time.time()
     
+    # Przetwarzanie filtrów: Zgodne z oryginalną logiką (pętla po kanałach)
     for channel in channels:
         
         if is_edges:
@@ -88,17 +95,31 @@ def process_single_file(file_name, filter_info, input_dir, output_dirs, filter_f
 
     result_color = cv2.merge(results_chan)
 
+    # Wynik do zapisu kolorowego (używany dla 'color/' i konwersji do szarości)
     result_color_uint8 = np.clip(result_color, 0, 255).astype(np.uint8)
     
-    original_gray_uint8 = cv2.cvtColor(img_color, cv2.COLOR_BGR2GRAY)
+    # Wynik w skali szarości (używany do metryk PSNR/SSIM i opcjonalnego zapisu 'gray/')
     result_gray_uint8 = cv2.cvtColor(result_color_uint8, cv2.COLOR_BGR2GRAY) 
 
+    # --- OBLICZENIA METRYK ---
+    original_gray_uint8 = cv2.cvtColor(img_color, cv2.COLOR_BGR2GRAY)
     psnr, ssim = evaluate(original_gray_uint8, result_gray_uint8)
     
-    output_dir = output_dirs[filter_name]
-    
-    cv2.imwrite(os.path.join(output_dir, f"{filter_name}_{method_name}_{file_name}"), result_color_uint8)
+    # --- ZAPIS PLIKÓW ---
+    base_output_dir = output_dirs[filter_name]
+    output_filename = f"{filter_name}_{method_name}_{file_name}"
 
+    # 1. Zapis do folderu COLOR (dla WSZYSTKICH filtrów)
+    color_dir = os.path.join(base_output_dir, "color")
+    os.makedirs(color_dir, exist_ok=True)
+    cv2.imwrite(os.path.join(color_dir, output_filename), result_color_uint8)
+
+    # 2. Zapis do folderu GRAY (tylko dla EDGES)
+    if is_edges:
+        gray_dir = os.path.join(base_output_dir, "gray")
+        os.makedirs(gray_dir, exist_ok=True)
+        cv2.imwrite(os.path.join(gray_dir, output_filename), result_gray_uint8)
+    
     return {
         "time": time_total,
         "psnr": psnr,
