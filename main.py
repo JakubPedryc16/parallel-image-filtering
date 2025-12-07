@@ -1,4 +1,5 @@
 import os
+import numba
 import numpy as np
 import argparse 
 import sys
@@ -18,7 +19,7 @@ from src.filters.sharpen import make_sharpen_kernel, sharpen, sharpen_seq, sharp
 from src.filters.gauss import gaussian_blur, gaussian_blur_seq, make_gaussian_kernel, gaussian_blur_cuda
 from src.filters.edges import sobel_edges, sobel_edges_seq, make_sobel_kernels, sobel_edges_cuda
 
-
+numba.set_num_threads(1)
 INPUT_DIR = "data/input"
 OUTPUT_DIRS = {
     "blur": "data/output_blur",

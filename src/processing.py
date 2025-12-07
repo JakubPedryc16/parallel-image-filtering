@@ -4,7 +4,7 @@ import time
 import numpy as np
 import sys
 from src.metrics import evaluate
-from src.constants import VARIANT_SEQ, VARIANT_PAR, VARIANT_CUDA # Dodaj import stałych
+from src.constants import VARIANT_SEQ, VARIANT_PAR, VARIANT_CUDA
 
 
 try:
@@ -80,7 +80,6 @@ def process_single_file(file_name, filter_info, input_dir, output_dirs, filter_f
     
     start_wall = time.time()
     
-    # Przetwarzanie filtrów: Zgodne z oryginalną logiką (pętla po kanałach)
     for channel in channels:
         
         if is_edges:
@@ -95,26 +94,20 @@ def process_single_file(file_name, filter_info, input_dir, output_dirs, filter_f
 
     result_color = cv2.merge(results_chan)
 
-    # Wynik do zapisu kolorowego (używany dla 'color/' i konwersji do szarości)
     result_color_uint8 = np.clip(result_color, 0, 255).astype(np.uint8)
     
-    # Wynik w skali szarości (używany do metryk PSNR/SSIM i opcjonalnego zapisu 'gray/')
     result_gray_uint8 = cv2.cvtColor(result_color_uint8, cv2.COLOR_BGR2GRAY) 
 
-    # --- OBLICZENIA METRYK ---
     original_gray_uint8 = cv2.cvtColor(img_color, cv2.COLOR_BGR2GRAY)
     psnr, ssim = evaluate(original_gray_uint8, result_gray_uint8)
     
-    # --- ZAPIS PLIKÓW ---
     base_output_dir = output_dirs[filter_name]
     output_filename = f"{filter_name}_{method_name}_{file_name}"
 
-    # 1. Zapis do folderu COLOR (dla WSZYSTKICH filtrów)
     color_dir = os.path.join(base_output_dir, "color")
     os.makedirs(color_dir, exist_ok=True)
     cv2.imwrite(os.path.join(color_dir, output_filename), result_color_uint8)
 
-    # 2. Zapis do folderu GRAY (tylko dla EDGES)
     if is_edges:
         gray_dir = os.path.join(base_output_dir, "gray")
         os.makedirs(gray_dir, exist_ok=True)

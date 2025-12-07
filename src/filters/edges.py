@@ -25,6 +25,7 @@ def sobel_edges(image, kx, ky):
             output[y, x] = min(max(val, 0), 255)
     return output.astype(np.uint8)
 
+@njit
 def sobel_edges_seq(image, kx, ky):
     h, w = image.shape
     k = kx.shape[0] // 2

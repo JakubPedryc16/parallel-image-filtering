@@ -18,6 +18,7 @@ def gaussian_blur(image, kernel):
             output[y, x] = np.sum(region * kernel)
     return output
 
+@njit
 def gaussian_blur_seq(image, kernel):
     h, w = image.shape
     k = kernel.shape[0] // 2

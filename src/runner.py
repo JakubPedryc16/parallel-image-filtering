@@ -9,8 +9,6 @@ def process_variant_filter_combination(all_files, f_info, method_name, input_dir
     filter_name = f_info["name"]
     filter_func = f_info[method_name]
     
-    # Tworzenie nazwy metody, która uwzględnia tryb pracy (single)
-    # Ta nazwa będzie przekazana do process_single_file i użyta do nazwania pliku wynikowego
     output_method_name = f"{MODE_SINGLE}_{method_name}"
     
     totals = {
@@ -24,7 +22,6 @@ def process_variant_filter_combination(all_files, f_info, method_name, input_dir
 
     for file in all_files:
         try:
-            # Używamy output_method_name zamiast surowego method_name
             result = process_single_file(file, f_info, input_dir, output_dirs, filter_func, output_method_name)
             
             totals["time"] += result["time"]
@@ -42,7 +39,6 @@ def process_variant_filter_combination(all_files, f_info, method_name, input_dir
 
     avg_time, avg_psnr, avg_ssim, count = calculate_averages(totals)
     
-    # Używamy surowego method_name do tworzenia klucza global_results
     key = f"{filter_name}_{method_name}"
     return key, {
         "avg_time": avg_time,
@@ -78,7 +74,6 @@ def run_sequential_benchmark(input_dir, output_dirs, filters_config, variants_to
             )
             global_results[key] = results
 
-    # Użycie wydzielonej funkcji wyświetlania
     display_sequential_results(filters_config, global_results)
 
     output_filename = f"benchmark_{MODE_SINGLE}_{'-'.join(variants_to_run)}"

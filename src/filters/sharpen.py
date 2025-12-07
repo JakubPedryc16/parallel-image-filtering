@@ -1,6 +1,7 @@
 import numpy as np
 from numba import njit, prange, cuda
 
+
 def make_sharpen_kernel():
     # Kernel wyostrzający, suma wag = 1.0
     return np.array([[0, -0.25, 0],
@@ -27,6 +28,7 @@ def sharpen(image, kernel):
     output = np.clip(output, 0.0, 255.0)
     return output
 
+@njit
 def sharpen_seq(image, kernel):
     h, w = image.shape
     k = kernel.shape[0] // 2
